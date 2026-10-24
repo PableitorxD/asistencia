@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Plantilla principal (Parent) que coordina los templates anidados.
+
+Resources:
+  VpcStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ./templates/vpc.yaml
+
+  ComputeStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: VpcStack
+    Properties:
+      TemplateURL: ./templates/compute.yaml
+      Parameters:
+        SubnetIdParam: !GetAtt VpcStack.Outputs.SubnetId

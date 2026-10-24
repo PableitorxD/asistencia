@@ -1,0 +1,18 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Template anidado para los servidores EC2.
+
+Parameters:
+  SubnetIdParam:
+    Type: String
+    Description: ID de la subred donde se desplegarán las instancias
+
+Resources:
+  ServidorNode1:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: ami-0c7217cdde317cfec # Cambia por una AMI válida de tu región si es necesario
+      SubnetId: !Ref SubnetIdParam
+      Tags:
+        - Key: Name
+          Value: srv-node-1

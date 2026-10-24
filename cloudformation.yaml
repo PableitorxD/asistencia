@@ -1,0 +1,193 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Infraestructura completa de Asistencia Automatizada (VPC, Subnet, Security Group, EIP y Servidores EC2)
+
+Parameters:
+  Proyecto:
+    Type: String
+    Default: asistencia
+
+  Ambiente:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, qa, prod]
+
+  TipoInstancia:
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t3.micro, t3.small]
+
+  ImagenLinux:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+  # 1. Virtual Private Cloud (VPC)
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: "10.0.0.0/16"
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${Proyecto}-${Ambiente}-vpc"
+
+  # 2. Subred Pública
+  SubnetPublica:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.0.1.0/24"
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: !Sub "${Proyecto}-${Ambiente}-subnet-public"
+
+  # 3. Internet Gateway y Ruta
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${Proyecto}-${Ambiente}-igw"
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${Proyecto}-${Ambiente}-routetable"
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SubnetPublica
+      RouteTableId: !Ref RouteTable
+
+  # 4. Grupo de Seguridad (Puerto 3000 abierto automáticamente)
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Grupo de seguridad para servidores de asistencia
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+          Description: Permitir SSH
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+          Description: Permitir HTTP
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: "0.0.0.0/0"
+          Description: Permitir trafico API backend en puerto 3000
+      Tags:
+        - Key: Name
+          Value: !Sub "${Proyecto}-${Ambiente}-sg"
+
+  # IP Elástica estática para el Backend
+  BackendEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${Proyecto}-${Ambiente}-backend-eip"
+
+  BackendEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref InstanciaBackend
+      AllocationId: !GetAtt BackendEIP.AllocationId
+
+  # 5. Instancia EC2 Backend (Se autoconfigura e inicia sola)
+  InstanciaBackend:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImagenLinux
+      InstanceType: !Ref TipoInstancia
+      SubnetId: !Ref SubnetPublica
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      UserData:
+        !Base64 |
+          #!/bin/bash
+          dnf update -y
+          dnf install -y git nodejs
+          cd /home/ec2-user
+          git clone https://github.com/PableitorxD/asistencia.git
+          chown -R ec2-user:ec2-user /home/ec2-user/asistencia
+          cd /home/ec2-user/asistencia/backend
+          npm install
+          # Levantar el servidor en segundo plano de forma persistente
+          su - ec2-user -c "cd /home/ec2-user/asistencia/backend && nohup node server.js > /home/ec2-user/backend.log 2>&1 &"
+      Tags:
+        - Key: Name
+          Value: !Sub "vm-${Proyecto}-${Ambiente}-backend"
+
+  # 6. Instancia EC2 Frontend (Inyecta la IP del Backend en config.js y arranca en puerto 80)
+  InstanciaFrontend:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref ImagenLinux
+      InstanceType: !Ref TipoInstancia
+      SubnetId: !Ref SubnetPublica
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+      UserData:
+        Fn::Base64:
+          Fn::Sub:
+            - |
+              #!/bin/bash
+              dnf update -y
+              dnf install -y git nodejs
+              cd /home/ec2-user
+              git clone https://github.com/PableitorxD/asistencia.git
+              chown -R ec2-user:ec2-user /home/ec2-user/asistencia
+              
+              # Inyección automática de la IP del Backend en config.js
+              cat << 'EOF' > /home/ec2-user/asistencia/frontend/js/config.js
+              window.APP_CONFIG = { API_URL: 'http://${BackendIP}:3000' };
+              EOF
+              
+              # Instalar serve y lanzarlo en puerto 80
+              npm install -g serve
+              nohup serve -s /home/ec2-user/asistencia/frontend -l 80 > /home/ec2-user/frontend.log 2>&1 &
+            - BackendIP: !Ref BackendEIP
+      Tags:
+        - Key: Name
+          Value: !Sub "vm-${Proyecto}-${Ambiente}-frontend"
+
+Outputs:
+  IdVPC:
+    Description: ID de la VPC creada
+    Value: !Ref VPC
+
+  URLFrontend:
+    Description: Enlace directo para abrir el sistema en el navegador
+    Value: !Sub "http://${InstanciaFrontend.PublicIp}"
+
+  IPBackend:
+    Description: IP fija del servidor Backend
+    Value: !Ref BackendEIP
