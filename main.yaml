@@ -14,3 +14,4 @@ Resources:
       TemplateURL: https://pablo-asistencia-templates-bucket.s3.us-east-2.amazonaws.com/templates/compute.yaml
       Parameters:
         SubnetIdParam: !GetAtt VpcStack.Outputs.SubnetId
+        # Forzar actualización de despliegue
