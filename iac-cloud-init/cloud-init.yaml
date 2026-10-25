@@ -1,0 +1,59 @@
+#cloud-config
+package_update: true
+packages:
+  - nodejs
+  - npm
+  - mariadb105-server
+
+write_files:
+  - path: /opt/globomatics/package.json
+    encoding: b64
+    content: ${package_json}
+  - path: /opt/globomatics/server.js
+    encoding: b64
+    content: ${server_js}
+  - path: /opt/globomatics/public/index.html
+    encoding: b64
+    content: ${index_html}
+  - path: /opt/globomatics/db/init.sql
+    encoding: b64
+    content: ${init_sql}
+  - path: /etc/globomatics.env
+    permissions: "0600"
+    content: |
+      PORT=3000
+      AMBIENTE=${ambiente}
+      DB_HOST=localhost
+      DB_USER=globo
+      DB_PASSWORD=${db_password}
+      DB_NAME=globomatics
+  - path: /root/crear-usuario.sql
+    permissions: "0600"
+    content: |
+      CREATE USER IF NOT EXISTS 'globo'@'localhost' IDENTIFIED BY '${db_password}';
+      GRANT ALL PRIVILEGES ON globomatics.* TO 'globo'@'localhost';
+      FLUSH PRIVILEGES;
+  - path: /etc/systemd/system/globomatics.service
+    content: |
+      [Unit]
+      Description=Globomatics Node App
+      After=network.target mariadb.service
+
+      [Service]
+      ExecStart=/usr/bin/node /opt/globomatics/server.js
+      Restart=always
+      EnvironmentFile=/etc/globomatics.env
+      WorkingDirectory=/opt/globomatics
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl enable mariadb
+  - systemctl start mariadb
+  - mysql < /root/crear-usuario.sql
+  - mysql < /opt/globomatics/db/init.sql
+  - cd /opt/globomatics && npm install
+  - systemctl daemon-reload
+  - systemctl enable globomatics
+  - systemctl start globomatics

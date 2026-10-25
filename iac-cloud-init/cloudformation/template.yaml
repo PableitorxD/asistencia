@@ -1,0 +1,55 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Pila de CloudFormation con Cloud-Init para Globomatics
+
+Parameters:
+  Ambiente:
+    Type: String
+    Default: dev
+  DbPassword:
+    Type: String
+    Default: secreto123
+    NoEcho: true
+
+Resources:
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Acceso web y SSH
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+        - FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+        - FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+
+  AppInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-052b3645c2c811821 # AMI de us-east-2
+      InstanceType: t3.micro
+      SecurityGroupIds:
+        - !Ref AppSecurityGroup
+      Tags:
+        - Key: Name
+          Value: servidor-cloudformation-cloudinit
+      UserData:
+        Fn::Base64: !Sub |
+          #cloud-config
+          package_update: true
+          packages:
+            - nodejs
+            - npm
+            - mariadb105-server
+          runcmd:
+            - systemctl enable mariadb
+            - systemctl start mariadb
+            - mkdir -p /opt/globomatics/public /opt/globomatics/db
+            - echo "Instalacion CloudFormation completada" > /opt/globomatics/status.txt
+
+Outputs:
+  UrlApp:
+    Description: URL de la aplicacion
+    Value: !Sub "http://${AppInstance.PublicIp}:3000"

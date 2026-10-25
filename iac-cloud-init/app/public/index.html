@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Globomatics Tareas</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f9; margin: 0; padding: 20px; }
+        .header { background: #003366; color: white; padding: 15px; border-radius: 5px; }
+        .card { background: white; padding: 20px; margin-top: 20px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input[type="text"] { width: 70%; padding: 8px; }
+        button { padding: 8px 15px; background: #cc3333; color: white; border: none; cursor: pointer; }
+        ul { list-style: none; padding: 0; }
+        li { padding: 8px 0; border-bottom: 1px solid #eee; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Globomatics Tareas</h1>
+        <p>Desplegada con IaC + cloud-init</p>
+    </div>
+    <div class="card">
+        <h3>Estado de la Aplicacion</h3>
+        <p><strong>Servidor:</strong> <span id="servidor">-</span></p>
+        <p><strong>Ambiente:</strong> <span id="ambiente">-</span></p>
+        <p><strong>Base de datos:</strong> <span id="db">-</span></p>
+        
+        <div style="margin-top: 20px;">
+            <input type="text" id="nuevaTarea" placeholder="Nueva tarea">
+            <button onclick="agregarTarea()">Agregar</button>
+        </div>
+        <ul id="listaTareas"></ul>
+    </div>
+
+    <script>
+        async function cargarDatos() {
+            const res = await fetch('/api/tareas');
+            const data = await res.json();
+            document.getElementById('servidor').innerText = data.servidor;
+            document.getElementById('ambiente').innerText = data.ambiente;
+            document.getElementById('db').innerText = data.baseDatos;
+            
+            const ul = document.getElementById('listaTareas');
+            ul.innerHTML = '';
+            data.tareas.forEach(t => {
+                const li = document.createElement('li');
+                li.innerHTML = `<input type="checkbox" ${t.completada ? 'checked' : ''} disabled> ${t.titulo}`;
+                ul.appendChild(li);
+            });
+        }
+        async function agregarTarea() {
+            const titulo = document.getElementById('nuevaTarea').value;
+            if(!titulo) return;
+            await fetch('/api/tareas', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ titulo })
+            });
+            document.getElementById('nuevaTarea').value = '';
+            cargarDatos();
+        }
+        cargarDatos();
+    </script>
+</body>
+</html>
