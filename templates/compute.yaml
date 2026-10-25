@@ -11,7 +11,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t2.micro
-      ImageId: ami-0c7217cdde317cfec # Cambia por una AMI válida de tu región si es necesario
+      ImageId: ami-052b3645c2c811821 # Cambiar x una AMI válida de nuestra región si es necesario
       SubnetId: !Ref SubnetIdParam
       Tags:
         - Key: Name
