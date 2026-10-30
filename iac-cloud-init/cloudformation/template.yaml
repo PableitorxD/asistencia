@@ -1,55 +1,104 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Pila de CloudFormation con Cloud-Init para Globomatics
-
-Parameters:
-  Ambiente:
-    Type: String
-    Default: dev
-  DbPassword:
-    Type: String
-    Default: secreto123
-    NoEcho: true
+Description: Despliegue de aplicacion Node.js y MariaDB con CloudFormation y cloud-init
 
 Resources:
-  AppSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
+  MiVPC:
+    Type: AWS::EC2::VPC
     Properties:
-      GroupDescription: Acceso web y SSH
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-        - FromPort: 3000
-          ToPort: 3000
-          CidrIp: 0.0.0.0/0
-        - IpProtocol: tcp
-        - FromPort: 22
-          ToPort: 22
-          CidrIp: 0.0.0.0/0
-
-  AppInstance:
-    Type: AWS::EC2::Instance
-    Properties:
-      ImageId: ami-052b3645c2c811821 # AMI de us-east-2
-      InstanceType: t3.micro
-      SecurityGroupIds:
-        - !Ref AppSecurityGroup
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
       Tags:
         - Key: Name
-          Value: servidor-cloudformation-cloudinit
+          Value: vpc-cloudformation
+
+  MiSubred:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MiVPC
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: subnet-cloudformation
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: igw-cloudformation
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MiVPC
+      InternetGatewayId: !Ref InternetGateway
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MiVPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MiSubred
+      RouteTableId: !Ref RouteTable
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Permitir SSH y puerto 3000
+      VpcId: !Ref MiVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: sg-cloudformation
+
+  ServidorEC2:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-02264560759f2705a # Amazon Linux 2023 AMI en us-east-2
+      SubnetId: !Ref MiSubred
+      SecurityGroupIds:
+        - !Ref SecurityGroup
       UserData:
         Fn::Base64: !Sub |
-          #cloud-config
+          #cloud-init
           package_update: true
           packages:
-            - nodejs
-            - npm
             - mariadb105-server
+            - nodejs
+            - git
           runcmd:
             - systemctl enable mariadb
             - systemctl start mariadb
+            - mysql -e "CREATE DATABASE IF NOT EXISTS globomatics; CREATE USER IF NOT EXISTS 'globo'@'localhost' IDENTIFIED BY 'secreto123'; GRANT ALL PRIVILEGES ON globomatics.* TO 'globo'@'localhost'; FLUSH PRIVILEGES;"
+            - mysql globomatics -e "CREATE TABLE IF NOT EXISTS tareas (id INT AUTO_INCREMENT PRIMARY KEY, titulo VARCHAR(255) NOT NULL, completada BOOLEAN DEFAULT FALSE); INSERT INTO tareas (titulo, completada) VALUES ('Base de datos inicializada por cloud-init', true), ('Servidor aprovisionado con CloudFormation', true);"
             - mkdir -p /opt/globomatics/public /opt/globomatics/db
-            - echo "Instalacion CloudFormation completada" > /opt/globomatics/status.txt
+      Tags:
+        - Key: Name
+          Value: servidor-cloudformation
 
 Outputs:
-  UrlApp:
-    Description: URL de la aplicacion
-    Value: !Sub "http://${AppInstance.PublicIp}:3000"
+  IPPublica:
+    Description: IP Publica de la instancia
+    Value: !GetAtt ServidorEC2.PublicIp

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "App de tareas con cloud-init",
   "main": "server.js",
+  "type": "module",
   "dependencies": {
     "express": "^4.19.2",
     "mariadb": "^3.3.0"

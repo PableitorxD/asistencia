@@ -10,7 +10,7 @@
         input[type="text"] { width: 70%; padding: 8px; }
         button { padding: 8px 15px; background: #cc3333; color: white; border: none; cursor: pointer; }
         ul { list-style: none; padding: 0; }
-        li { padding: 8px 0; border-bottom: 1px solid #eee; }
+        li { padding: 8px 0; border-bottom: 1px solid #eee; display: flex; align-items: center; gap: 10px; }
     </style>
 </head>
 <body>
@@ -43,10 +43,30 @@
             ul.innerHTML = '';
             data.tareas.forEach(t => {
                 const li = document.createElement('li');
-                li.innerHTML = `<input type="checkbox" ${t.completada ? 'checked' : ''} disabled> ${t.titulo}`;
+                
+                // Creamos el checkbox de forma dinámica para añadirle el evento
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = t.completada;
+
+                // Evento para actualizar el estado al hacer clic
+                checkbox.addEventListener('change', async () => {
+                    await fetch(`/api/tareas/${t.id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ completada: checkbox.checked })
+                    });
+                });
+
+                const span = document.createElement('span');
+                span.innerText = t.titulo;
+
+                li.appendChild(checkbox);
+                li.appendChild(span);
                 ul.appendChild(li);
             });
         }
+
         async function agregarTarea() {
             const titulo = document.getElementById('nuevaTarea').value;
             if(!titulo) return;
@@ -58,6 +78,7 @@
             document.getElementById('nuevaTarea').value = '';
             cargarDatos();
         }
+
         cargarDatos();
     </script>
 </body>

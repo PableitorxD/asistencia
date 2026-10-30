@@ -1,3 +1,10 @@
-name: globomatics-pulumi
-runtime: nodejs
-description: Infraestructura con Pulumi y Cloud-Init
+name: project
+description: A minimal AWS TypeScript Pulumi program
+runtime:
+  name: nodejs
+  options:
+    packagemanager: npm
+config:
+  pulumi:tags:
+    value:
+      pulumi:template: aws-typescript
