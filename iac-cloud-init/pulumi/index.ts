@@ -47,13 +47,20 @@ const ami = aws.ec2.getAmi({
     ],
 });
 
-// 6. UserData (cloud-init) - Usando userDataBase64 para evitar la advertencia
+// 6. UserData (cloud-init) con automatización completa de la app
 const userDataScript = `#!/bin/bash
 dnf update -y
 dnf install -y mariadb105-server nodejs git
 systemctl enable --now mariadb
 mysql -e "CREATE DATABASE IF NOT EXISTS globomatics; CREATE USER IF NOT EXISTS 'globo'@'localhost' IDENTIFIED BY 'secreto123'; GRANT ALL PRIVILEGES ON globomatics.* TO 'globo'@'localhost'; FLUSH PRIVILEGES;"
 mysql globomatics -e "CREATE TABLE IF NOT EXISTS tareas (id INT AUTO_INCREMENT PRIMARY KEY, titulo VARCHAR(255) NOT NULL, completada BOOLEAN DEFAULT FALSE); INSERT INTO tareas (titulo, completada) VALUES ('Base de datos inicializada por cloud-init', true), ('Servidor aprovisionado con Pulumi', true);"
+
+# Clonar el repositorio y levantar la aplicación Node.js automáticamente
+mkdir -p /opt/globomatics
+git clone https://github.com/PableitorXD/asistencia.git /opt/globomatics
+cd /opt/globomatics/iac-cloud-init/app
+npm install
+nohup node server.js > app.log 2>&1 &
 `;
 
 // 7. Instancia EC2
